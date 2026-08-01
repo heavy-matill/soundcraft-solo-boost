@@ -1,0 +1,19 @@
+{
+  "name": "soundcraft-solo-boost",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "soundcraft-ui-connection": "^7.0.2"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0"
+  }
+}
