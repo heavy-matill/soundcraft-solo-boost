@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <meta charset="UTF-8">
     <title>Soundcraft Solo Boost</title>
@@ -46,12 +45,12 @@
         }
     </style>
 </head>
-
 <body>
     <div id="connection-status">Status: Disconnected</div>
+    <button id="boostButton">Solo Boost</button>
     <button onclick="mute(1)">Mute 1</button>
     <button onclick="unmute(1)">Unmute 1</button>
-    <button id="boost3dBButton" onclick="toggle3dBBoost(1)">Boost 3dB: OFF</button>
+    <button id="boost3dBButton" onclick="toggle3dBBoost()">Boost 3dB: OFF</button>
     <script type="module">
         // Require the SoundcraftUI module
         import { SoundcraftUI } from './soundcraft-ui-connection.mjs';
@@ -60,46 +59,92 @@
         const conn = new SoundcraftUI('192.168.1.200');
 
         // Subscribe to connection status updates
-        conn.status$.subscribe({
-            next: (status) => {
-                document.getElementById('connection-status').textContent = `Status: ${status}`;
-            },
-            error: (err) => {
-                console.error('Status subscription error:', err);
-                document.getElementById('connection-status').textContent = 'Status: Error';
-            }
-        });
+        if (conn.status$) {
+            conn.status$.subscribe({
+                next: (status) => {
+                    document.getElementById('connection-status').textContent = `Status: ${status}`;
+                },
+                error: (err) => {
+                    console.error('Status subscription error:', err);
+                    document.getElementById('connection-status').textContent = 'Status: Error';
+                }
+            });
+        } else {
+            // Fallback if status$ doesn't exist
+            document.getElementById('connection-status').textContent = 'Status: Unknown (no status observable)';
+        }
 
         // Create connection
-        await conn.connect()
+        (async () => {
+            try {
+                await conn.connect();
+                console.log('Connected to Soundcraft UI');
+                // Update status immediately after connect (in case subscription doesn't catch initial state)
+                if (document.getElementById('connection-status')) {
+                    document.getElementById('connection-status').textContent = 'Status: Connected';
+                }
+            } catch (err) {
+                console.error('Connection error:', err);
+                document.getElementById('connection-status').textContent = 'Status: Connection Failed';
+            }
+        })();
 
         // Define mute/unmute functions
         window.mute = function (ch) {
-            conn.master.input(ch).mute();
-        }
+            if (conn && conn.master && conn.master.input) {
+                conn.master.input(ch).mute();
+            }
+        };
 
         window.unmute = function (ch) {
-            conn.master.input(ch).unmute();
-        }
+            if (conn && conn.master && conn.master.input) {
+                conn.master.input(ch).unmute();
+            }
+        };
 
-        // Toggle 3dB boost on channel
+        // Toggle 3dB boost on channel 1
         let is3dBBoostActive = false;
-        window.toggle3dBBoost = function (ch) {
+        window.toggle3dBBoost = function() {
+            if (!conn || !conn.master || !conn.master.input) {
+                console.error('Soundcraft UI connection not ready');
+                return;
+            }
 
-            const channel = conn.master.input(ch);
+            const channel1 = conn.master.input(1);
+            if (!channel1) {
+                console.error('Channel 1 not available');
+                return;
+            }
+
             if (is3dBBoostActive) {
                 // Turn off: subtract 3dB
-                channel.changeFaderLevelDB(-3);
+                channel1.changeFaderLevelDB(-3);
                 is3dBBoostActive = false;
                 document.getElementById('boost3dBButton').textContent = 'Boost 3dB: OFF';
             } else {
                 // Turn on: add 3dB
-                channel.changeFaderLevelDB(3);
+                channel1.changeFaderLevelDB(3);
                 is3dBBoostActive = true;
                 document.getElementById('boost3dBButton').textContent = 'Boost 3dB: ON';
             }
         };
     </script>
-</body>
+    <script>
+        // You can add button functionality here if needed
+        document.getElementById('boostButton').addEventListener('click', () => {
+            alert('Solo Boost activated!');
+        });
 
+        // Listen for IPC message from main process to toggle 3dB boost via global shortcut
+        if (typeof require !== 'undefined' && require('electron')) {
+            const { ipcRenderer } = require('electron');
+            ipcRenderer.on('toggle-3db-boost', (event) => {
+                console.log('Received IPC message to toggle 3dB boost');
+                if (typeof window.toggle3dBBoost === 'function') {
+                    window.toggle3dBBoost();
+                }
+            });
+        }
+    </script>
+</body>
 </html>

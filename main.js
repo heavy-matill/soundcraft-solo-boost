@@ -1,5 +1,5 @@
 // Proper way to import Electron for main process
-const { app, BrowserWindow, screen } = require('electron');
+const { app, BrowserWindow, screen, globalShortcut, ipcMain } = require('electron');
 
 function createWindow() {
   const height = 300;
@@ -21,12 +21,32 @@ function createWindow() {
 
   // Load index.html
   win.loadFile('index.html');
+
+  // Open DevTools for debugging (remove in production)
+  // win.webContents.openDevTools();
 }
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+
+  // Register global shortcut for Ctrl+Shift+B to toggle 3dB boost
+  const ret = globalShortcut.register('CommandOrControl+Shift+B', () => {
+    // Send message to all webContents to toggle 3dB boost
+    const windows = BrowserWindow.getAllWindows();
+    windows.forEach(win => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('toggle-3db-boost');
+      }
+    });
+  });
+
+  if (!ret) {
+    console.error('Global shortcut registration failed');
+  }
+});
 
 // Quit when all windows are closed, except on macOS.
 app.on('window-all-closed', () => {
@@ -41,4 +61,9 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
+});
+
+// Unregister all shortcuts when the app is quitting
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
