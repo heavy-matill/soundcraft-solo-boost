@@ -1,5 +1,6 @@
 // Proper way to import Electron for main process
 const { app, BrowserWindow, screen, globalShortcut, ipcMain, Notification } = require('electron');
+const path = require('path');
 app.setAppUserModelId(process.execPath) // for Notification to work (also add node_modules\electron\dist\electron.exe to start menu)
 
 function createWindow() {
@@ -7,7 +8,7 @@ function createWindow() {
   // Create the browser window.
   const win = new BrowserWindow({
     x: 0,
-    y: (screen.getPrimaryDisplay().workAreaSize.height - height)/2, // Position at center left
+    y: (screen.getPrimaryDisplay().workAreaSize.height - height) / 2, // Position at center left
     width: 200,
     height: height,
     alwaysOnTop: true,
@@ -31,8 +32,20 @@ function createWindow() {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  
+
   createWindow();
+
+  ipcMain.on('show-boost-notification', (event, payload) => {
+    const isActive = Boolean(payload?.isActive);
+    const icon = path.join(__dirname, isActive ? 'power-button-icon-green.png' : 'power-button-icon-red.png');
+
+    new Notification({
+      title: '3dB Boost',
+      body: isActive ? '3dB Boost Activated' : '3dB Boost Deactivated',
+      silent: true,
+      icon
+    }).show();
+  });
 
   // Register global shortcut for Ctrl+Shift+B to toggle 3dB boost
   const ret = globalShortcut.register('CommandOrControl+Shift+B', () => {
@@ -48,18 +61,7 @@ app.whenReady().then(() => {
   if (!ret) {
     console.error('Global shortcut registration failed');
   }
-}).then(() => {
-
-  
-
-const NOTIFICATION_TITLE = 'Basic Notification'
-const NOTIFICATION_BODY = 'Notification from the Main process'
-
-new Notification({
-  title: NOTIFICATION_TITLE,
-  body: NOTIFICATION_BODY
-}).show()
-})
+});
 
 // Quit when all windows are closed, except on macOS.
 app.on('window-all-closed', () => {

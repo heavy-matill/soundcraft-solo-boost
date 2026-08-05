@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <title>Soundcraft Solo Boost</title>
@@ -45,6 +46,7 @@
         }
     </style>
 </head>
+
 <body>
     <div id="connection-status">Status: Disconnected</div>
     <button id="boostButton">Solo Boost</button>
@@ -104,7 +106,7 @@
 
         // Toggle 3dB boost on channel 1
         let is3dBBoostActive = false;
-        window.toggle3dBBoost = function() {
+        window.toggle3dBBoost = function () {
             if (!conn || !conn.master || !conn.master.input) {
                 console.error('Soundcraft UI connection not ready');
                 return;
@@ -127,9 +129,12 @@
                 is3dBBoostActive = true;
                 document.getElementById('boost3dBButton').textContent = 'Boost 3dB: ON';
             }
-            new window.Notification('3dB Boost', {
-                body: is3dBBoostActive ? '3dB Boost Activated' : '3dB Boost Deactivated'
-            });
+
+            if (window.ipcRenderer) {
+                window.ipcRenderer.send('show-boost-notification', {
+                    isActive: is3dBBoostActive
+                });
+            }
         };
     </script>
     <script>
@@ -141,6 +146,7 @@
         // Listen for IPC message from main process to toggle 3dB boost via global shortcut
         if (typeof require !== 'undefined' && require('electron')) {
             const { ipcRenderer } = require('electron');
+            window.ipcRenderer = ipcRenderer;
             ipcRenderer.on('toggle-3db-boost', (event) => {
                 console.log('Received IPC message to toggle 3dB boost');
                 if (typeof window.toggle3dBBoost === 'function') {
@@ -150,4 +156,5 @@
         }
     </script>
 </body>
+
 </html>
