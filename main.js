@@ -1,5 +1,6 @@
 // Proper way to import Electron for main process
-const { app, BrowserWindow, screen, globalShortcut, ipcMain } = require('electron');
+const { app, BrowserWindow, screen, globalShortcut, ipcMain, Notification } = require('electron');
+app.setAppUserModelId(process.execPath) // for Notification to work (also add node_modules\electron\dist\electron.exe to start menu)
 
 function createWindow() {
   const height = 300;
@@ -30,6 +31,7 @@ function createWindow() {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+  
   createWindow();
 
   // Register global shortcut for Ctrl+Shift+B to toggle 3dB boost
@@ -46,7 +48,18 @@ app.whenReady().then(() => {
   if (!ret) {
     console.error('Global shortcut registration failed');
   }
-});
+}).then(() => {
+
+  
+
+const NOTIFICATION_TITLE = 'Basic Notification'
+const NOTIFICATION_BODY = 'Notification from the Main process'
+
+new Notification({
+  title: NOTIFICATION_TITLE,
+  body: NOTIFICATION_BODY
+}).show()
+})
 
 // Quit when all windows are closed, except on macOS.
 app.on('window-all-closed', () => {

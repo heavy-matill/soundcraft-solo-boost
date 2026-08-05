@@ -127,6 +127,9 @@
                 is3dBBoostActive = true;
                 document.getElementById('boost3dBButton').textContent = 'Boost 3dB: ON';
             }
+            new window.Notification('3dB Boost', {
+                body: is3dBBoostActive ? '3dB Boost Activated' : '3dB Boost Deactivated'
+            });
         };
     </script>
     <script>
