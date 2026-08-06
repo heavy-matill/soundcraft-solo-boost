@@ -55,7 +55,7 @@
     <button id="boost3dBButton" onclick="toggle3dBBoost()">Boost 3dB: OFF</button>
     <script type="module">
         // Require the SoundcraftUI module
-        import { SoundcraftUI } from './soundcraft-ui-connection.mjs';
+        import { SoundcraftUI } from './node_modules/soundcraft-ui-connection/index.mjs';
 
         // Create connection
         const conn = new SoundcraftUI('192.168.1.200');
