@@ -20,6 +20,7 @@ function createWindow() {
   });
   // Disable Application Menu
   win.setMenu(null);
+  win.webContents.openDevTools()
 
   // Load index.html
   win.loadFile('index.html');
