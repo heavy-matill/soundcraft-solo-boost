@@ -1,5 +1,8 @@
 // Proper way to import Electron for main process
+const DEBUG = false;
 const { app, BrowserWindow, screen, globalShortcut, ipcMain, Notification } = require('electron');
+const ElectronStore = require('electron-store');
+ElectronStore.initRenderer();
 const path = require('path');
 app.setAppUserModelId(process.execPath) // for Notification to work (also add node_modules\electron\dist\electron.exe to start menu)
 
@@ -18,15 +21,16 @@ function createWindow() {
       contextIsolation: false
     }
   });
+  if (DEBUG) {
+    // Open DevTools for debugging (remove in production)
+    win.webContents.openDevTools();
+  }
   // Disable Application Menu
   win.setMenu(null);
-  win.webContents.openDevTools()
 
   // Load index.html
   win.loadFile('index.html');
 
-  // Open DevTools for debugging (remove in production)
-  // win.webContents.openDevTools();
 }
 
 // This method will be called when Electron has finished
