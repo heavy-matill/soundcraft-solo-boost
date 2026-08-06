@@ -12,7 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "soundcraft-ui-connection": "^7.0.2",
-    "electron-store": "^8.0.1"
+    "electron-store": "^8.2.0"
   },
   "devDependencies": {
     "electron": "^43.2.0"

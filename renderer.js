@@ -1,4 +1,5 @@
 // Electron store for persistence
+console.log('electron-store');
 let store = null;
 try {
     const Store = require('electron-store');
@@ -7,6 +8,7 @@ try {
     console.warn('electron-store not available, persistence disabled:', e);
 
 }
+console.log('electron-store done');
 
 // State tracking
 const muteState = {};
@@ -54,7 +56,9 @@ function saveState() {
 }
 
 // Load state on startup
+console.log('Loading persisted state...');
 loadState();
+console.log('State loaded.');
 
 // Helper to get state with default false
 function getMute(ch) { return muteState[ch] ?? false; }
