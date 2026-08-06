@@ -78,26 +78,15 @@ function updateBoostButtonText() {
     btn.textContent = getBoost(ch) ? `Boost 3dB: ON` : `Boost 3dB: OFF`;
 }
 
+// Update button text to reflect current state
+updateMuteButtonText();
+updateBoostButtonText();
+
 // When channel input changes, restore old channel state and read new channel state from device
 document.getElementById('channelInput').addEventListener('change', function () {
     const newCh = parseInt(this.value) || 1;
     const oldCh = lastChannel;
     if (oldCh !== newCh) {
-        // Restore old channel: apply its stored state to device (if connection ready)
-        if (window.conn && window.conn.master && window.conn.master.input) {
-            const oldChannelObj = window.conn.master.input(oldCh);
-            if (oldChannelObj) {
-                // Apply mute state
-                if (getMute(oldCh)) {
-                    oldChannelObj.mute();
-                } else {
-                    oldChannelObj.unmute();
-                }
-                // Note: Boost state is handled by the toggle function which sends relative changes
-                // We assume the device boost state matches our stored state since we only change it via our buttons
-            }
-        }
-
         // Read the new channel's state from the device
         if (window.conn && window.conn.master && window.conn.master.input) {
             const newChannelObj = window.conn.master.input(newCh);
@@ -228,16 +217,23 @@ if (window.conn.status$) {
                     isActuallyMuted = channelObj.isMuted();
                 } else if (typeof channelObj.getMuted === 'function') {
                     isActuallyMuted = channelObj.getMuted();
+                } else {
+                    // Fallback: if we can't read the state, keep our stored state
+                    // This maintains current behavior as a fallback
+                    isActuallyMuted = getMute(initialCh);
                 }
                 // Update our stored state to match what we read from device
                 setMute(initialCh, isActuallyMuted);
-                // Update button text to reflect the actual state
-                updateMuteButtonText();
                 saveState(); // Persist the loaded state
             }
         } catch (e) {
-            console.warn('Could not read initial mute state from device:', e);
+            console.warn('Could not read initial mute state from device, using stored state:', e);
+            // Keep existing state if we can't read from device
         }
+
+        // Update button text to reflect the actual state (whether loaded from device or stored)
+        updateMuteButtonText();
+        updateBoostButtonText();
     } catch (err) {
         console.error('Connection error:', err);
         document.getElementById('connection-status').textContent = 'Status: Connection Failed';
