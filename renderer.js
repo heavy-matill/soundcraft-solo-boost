@@ -186,6 +186,12 @@ if (window.conn.status$) {
     window.conn.status$.subscribe({
         next: (status) => {
             document.getElementById('connection-status').textContent = `Status: ${status}`;
+            // Handle status changes for reconnection
+            if (status === 'Disconnected' || status === 'disconnected') {
+                scheduleReconnect();
+            } else if (status === 'Connected' || status === 'connected') {
+                reconnectAttempts = 0;
+            }
         },
         error: (err) => {
             console.error('Status subscription error:', err);
@@ -197,48 +203,97 @@ if (window.conn.status$) {
     document.getElementById('connection-status').textContent = 'Status: Unknown (no status observable)';
 }
 
-// Create connection
-(async () => {
-    try {
-        await window.conn.connect();
-        console.log('Connected to Soundcraft UI');
-        // Update status immediately after connect (in case subscription doesn't catch initial state)
-        if (document.getElementById('connection-status')) {
-            document.getElementById('connection-status').textContent = 'Status: Connected';
-        }
+// Reconnection handling
+let reconnectAttempts = 0;
+const baseDelay = 3000; // 3 seconds
+const maxDelay = 30000; // 30 seconds
+let reconnectInterval = null;
+let reconnectTimeLeft = 0;
 
-        // Load mute state of initial channel from device
-        try {
-            const initialCh = lastChannel; // This is the channel we're showing initially
-            const channelObj = window.conn.master.input(initialCh);
-            if (channelObj) {
-                let isActuallyMuted = false;
-                if (typeof channelObj.isMuted === 'function') {
-                    isActuallyMuted = channelObj.isMuted();
-                } else if (typeof channelObj.getMuted === 'function') {
-                    isActuallyMuted = channelObj.getMuted();
-                } else {
-                    // Fallback: if we can't read the state, keep our stored state
-                    // This maintains current behavior as a fallback
-                    isActuallyMuted = getMute(initialCh);
-                }
-                // Update our stored state to match what we read from device
-                setMute(initialCh, isActuallyMuted);
-                saveState(); // Persist the loaded state
-            }
-        } catch (e) {
-            console.warn('Could not read initial mute state from device, using stored state:', e);
-            // Keep existing state if we can't read from device
-        }
-
-        // Update button text to reflect the actual state (whether loaded from device or stored)
-        updateMuteButtonText();
-        updateBoostButtonText();
-    } catch (err) {
-        console.error('Connection error:', err);
-        document.getElementById('connection-status').textContent = 'Status: Connection Failed';
+function updateConnectionStatus(text) {
+    const statusEl = document.getElementById('connection-status');
+    if (statusEl) {
+        statusEl.textContent = text;
     }
-})();
+}
+
+function attemptConnect() {
+    window.conn.connect()
+        .then(() => {
+            console.log('Connected to Soundcraft UI');
+            // Clear any reconnection countdown
+            if (reconnectInterval !== null) {
+                clearInterval(reconnectInterval);
+                reconnectInterval = null;
+            }
+            reconnectAttempts = 0;
+            updateConnectionStatus('Status: Connected');
+            onConnected();
+        })
+        .catch(err => {
+            console.error('Connection error:', err);
+            // If we got an error, schedule a reconnect
+            scheduleReconnect();
+        });
+}
+
+function scheduleReconnect() {
+    // Clear any existing interval
+    if (reconnectInterval !== null) {
+        clearInterval(reconnectInterval);
+        reconnectInterval = null;
+    }
+
+    const delay = Math.min(baseDelay * Math.pow(2, reconnectAttempts), maxDelay);
+    reconnectTimeLeft = Math.ceil(delay / 1000);
+    updateConnectionStatus(`Status: Reconnecting in ${reconnectTimeLeft}s...`);
+
+    reconnectInterval = setInterval(() => {
+        reconnectTimeLeft--;
+        if (reconnectTimeLeft <= 0) {
+            clearInterval(reconnectInterval);
+            reconnectInterval = null;
+            // Time's up, attempt connection
+            reconnectAttempts++;
+            attemptConnect();
+        } else {
+            updateConnectionStatus(`Status: Reconnecting in ${reconnectTimeLeft}s...`);
+        }
+    }, 1000);
+}
+
+function onConnected() {
+    // Load mute state of initial channel from device
+    try {
+        const initialCh = lastChannel; // This is the channel we're showing initially
+        const channelObj = window.conn.master.input(initialCh);
+        if (channelObj) {
+            let isActuallyMuted = false;
+            if (typeof channelObj.isMuted === 'function') {
+                isActuallyMuted = channelObj.isMuted();
+            } else if (typeof channelObj.getMuted === 'function') {
+                isActuallyMuted = channelObj.getMuted();
+            } else {
+                // Fallback: if we can't read the state, keep our stored state
+                // This maintains current behavior as a fallback
+                isActuallyMuted = getMute(initialCh);
+            }
+            // Update our stored state to match what we read from device
+            setMute(initialCh, isActuallyMuted);
+            saveState(); // Persist the loaded state
+        }
+    } catch (e) {
+        console.warn('Could not read initial mute state from device, using stored state:', e);
+        // Keep existing state if we can't read from device
+    }
+
+    // Update button text to reflect the actual state (whether loaded from device or stored)
+    updateMuteButtonText();
+    updateBoostButtonText();
+}
+
+// Initial connection attempt
+attemptConnect();
 
 // Listen for IPC message from main process to toggle 3dB boost via global shortcut
 if (typeof require !== 'undefined' && require('electron')) {
