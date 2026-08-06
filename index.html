@@ -54,10 +54,60 @@
     <button id="boost3dBButton" onclick="toggle3dBBoost()">Boost 3dB: OFF</button>
 
     <script>
+        // Electron store for persistence
+        let store = null;
+        try {
+            const Store = require('electron-store');
+            store = new Store();
+        } catch (e) {
+            console.warn('electron-store not available, persistence disabled:', e);
+        }
+
         // State tracking
         const muteState = {};
         const boostState = {};
         let lastChannel = 1;
+
+        // Load persisted state
+        function loadState() {
+            if (!store) return;
+            try {
+                const persistedLastChannel = store.get('lastChannel');
+                if (typeof persistedLastChannel === 'number') {
+                    lastChannel = persistedLastChannel;
+                }
+                const persistedMute = store.get('muteState');
+                if (persistedMute && typeof persistedMute === 'object') {
+                    Object.assign(muteState, persistedMute);
+                }
+                const persistedBoost = store.get('boostState');
+                if (persistedBoost && typeof persistedBoost === 'object') {
+                    Object.assign(boostState, persistedBoost);
+                }
+                // Set input channel
+                const channelInput = document.getElementById('channelInput');
+                if (channelInput) {
+                    channelInput.value = lastChannel;
+                }
+            } catch (e) {
+                console.warn('Failed to load state from store:', e);
+            }
+        }
+
+        // Save state
+        function saveState() {
+            if (!store) return;
+            try {
+                store.set('lastChannel', lastChannel);
+                store.set('muteState', muteState);
+                store.set('boostState', boostState);
+            } catch (e) {
+                console.warn('Failed to save state to store:', e);
+            }
+        }
+
+        // Load state on startup
+        loadState();
 
         // Helper to get state with default false
         function getMute(ch) { return muteState[ch] ?? false; }
@@ -77,7 +127,7 @@
             btn.textContent = getBoost(ch) ? `Boost 3dB: ON` : `Boost 3dB: OFF`;
         }
 
-        // When channel input changes, restore old channel state and prepare for new
+        // When channel input changes, restore old channel state and read new channel state from device
         document.getElementById('channelInput').addEventListener('change', function() {
             const newCh = parseInt(this.value) || 1;
             const oldCh = lastChannel;
@@ -92,14 +142,39 @@
                         } else {
                             oldChannelObj.unmute();
                         }
-                        // Apply boost state: we need to set fader to base + (boost?3:0)
-                        // Since we only have relative adjustments, we'll just ensure the boost state matches
-                        // by toggling if needed? Actually we can't know current fader.
-                        // We'll assume the device's boost state matches our boostState because we only change via our buttons.
-                        // So no action needed.
+                        // Note: Boost state is handled by the toggle function which sends relative changes
+                        // We assume the device boost state matches our stored state since we only change it via our buttons
                     }
                 }
+
+                // Read the new channel's state from the device
+                if (window.conn && window.conn.master && window.conn.master.input) {
+                    const newChannelObj = window.conn.master.input(newCh);
+                    if (newChannelObj) {
+                        try {
+                            // Try to read mute state from device
+                            // Assuming the channel object has an isMuted() or getMute() method
+                            let isActuallyMuted = false;
+                            if (typeof newChannelObj.isMuted === 'function') {
+                                isActuallyMuted = newChannelObj.isMuted();
+                            } else if (typeof newChannelObj.getMuted === 'function') {
+                                isActuallyMuted = newChannelObj.getMuted();
+                            } else {
+                                // Fallback: if we can't read the state, keep our stored state
+                                // This maintains current behavior as a fallback
+                                isActuallyMuted = getMute(newCh);
+                            }
+                            // Update our stored state to match what we read from device
+                            setMute(newCh, isActuallyMuted);
+                        } catch (e) {
+                            console.warn('Could not read mute state from device, using stored state:', e);
+                            // Keep existing state if we can't read from device
+                        }
+                    }
+                }
+
                 lastChannel = newCh;
+                saveState(); // Persist channel change
                 updateMuteButtonText();
                 updateBoostButtonText();
             }
@@ -126,6 +201,7 @@
                 channel.unmute();
             }
             updateMuteButtonText();
+            saveState(); // Persist mute toggle
         };
 
         // Toggle 3dB boost for channel from input
@@ -157,6 +233,7 @@
                     isActive: nowBoosted
                 });
             }
+            saveState(); // Persist boost toggle
         };
     </script>
 
@@ -191,6 +268,27 @@
                 // Update status immediately after connect (in case subscription doesn't catch initial state)
                 if (document.getElementById('connection-status')) {
                     document.getElementById('connection-status').textContent = 'Status: Connected';
+                }
+
+                // Load mute state of initial channel from device
+                try {
+                    const initialCh = lastChannel; // This is the channel we're showing initially
+                    const channelObj = window.conn.master.input(initialCh);
+                    if (channelObj) {
+                        let isActuallyMuted = false;
+                        if (typeof channelObj.isMuted === 'function') {
+                            isActuallyMuted = channelObj.isMuted();
+                        } else if (typeof channelObj.getMuted === 'function') {
+                            isActuallyMuted = channelObj.getMuted();
+                        }
+                        // Update our stored state to match what we read from device
+                        setMute(initialCh, isActuallyMuted);
+                        // Update button text to reflect the actual state
+                        updateMuteButtonText();
+                        saveState(); // Persist the loaded state
+                    }
+                } catch (e) {
+                    console.warn('Could not read initial mute state from device:', e);
                 }
             } catch (err) {
                 console.error('Connection error:', err);
