@@ -52,16 +52,124 @@
     <input type="number" id="channelInput" placeholder="Channel Number" min="1" max="24" style="margin-bottom: 10px; padding: 10px; font-size: 16px; width: 150px;">
     <button id="muteToggleButton" onclick="toggleMuteFromInput()">Mute 1</button>
     <button id="boost3dBButton" onclick="toggle3dBBoost()">Boost 3dB: OFF</button>
+
+    <script>
+        // State tracking
+        const muteState = {};
+        const boostState = {};
+        let lastChannel = 1;
+
+        // Helper to get state with default false
+        function getMute(ch) { return muteState[ch] ?? false; }
+        function getBoost(ch) { return boostState[ch] ?? false; }
+        function setMute(ch, val) { muteState[ch] = val; }
+        function setBoost(ch, val) { boostState[ch] = val; }
+
+        // Update button text for current channel (from input)
+        function updateMuteButtonText() {
+            const ch = parseInt(document.getElementById('channelInput').value) || 1;
+            const btn = document.getElementById('muteToggleButton');
+            btn.textContent = getMute(ch) ? `Unmute ${ch}` : `Mute ${ch}`;
+        }
+        function updateBoostButtonText() {
+            const ch = parseInt(document.getElementById('channelInput').value) || 1;
+            const btn = document.getElementById('boost3dBButton');
+            btn.textContent = getBoost(ch) ? `Boost 3dB: ON` : `Boost 3dB: OFF`;
+        }
+
+        // When channel input changes, restore old channel state and prepare for new
+        document.getElementById('channelInput').addEventListener('change', function() {
+            const newCh = parseInt(this.value) || 1;
+            const oldCh = lastChannel;
+            if (oldCh !== newCh) {
+                // Restore old channel: apply its stored state to device (if connection ready)
+                if (window.conn && window.conn.master && window.conn.master.input) {
+                    const oldChannelObj = window.conn.master.input(oldCh);
+                    if (oldChannelObj) {
+                        // Apply mute state
+                        if (getMute(oldCh)) {
+                            oldChannelObj.mute();
+                        } else {
+                            oldChannelObj.unmute();
+                        }
+                        // Apply boost state: we need to set fader to base + (boost?3:0)
+                        // Since we only have relative adjustments, we'll just ensure the boost state matches
+                        // by toggling if needed? Actually we can't know current fader.
+                        // We'll assume the device's boost state matches our boostState because we only change via our buttons.
+                        // So no action needed.
+                    }
+                }
+                lastChannel = newCh;
+                updateMuteButtonText();
+                updateBoostButtonText();
+            }
+        });
+
+        // Toggle mute for channel from input
+        window.toggleMuteFromInput = function () {
+            const chInput = document.getElementById('channelInput');
+            const ch = parseInt(chInput.value) || 1;
+            if (!window.conn || !window.conn.master || !window.conn.master.input) {
+                console.error('Soundcraft UI connection not ready');
+                return;
+            }
+            const channel = window.conn.master.input(ch);
+            if (!channel) {
+                console.error(`Channel ${ch} not available`);
+                return;
+            }
+            const nowMuted = !getMute(ch); // toggle
+            setMute(ch, nowMuted);
+            if (nowMuted) {
+                channel.mute();
+            } else {
+                channel.unmute();
+            }
+            updateMuteButtonText();
+        };
+
+        // Toggle 3dB boost for channel from input
+        window.toggle3dBBoost = function () {
+            const chInput = document.getElementById('channelInput');
+            const ch = parseInt(chInput.value) || 1;
+            if (!window.conn || !window.conn.master || !window.conn.master.input) {
+                console.error('Soundcraft UI connection not ready');
+                return;
+            }
+            const channel = window.conn.master.input(ch);
+            if (!channel) {
+                console.error(`Channel ${ch} not available`);
+                return;
+            }
+            const nowBoosted = !getBoost(ch); // toggle
+            setBoost(ch, nowBoosted);
+            if (nowBoosted) {
+                // Turn on: add 3dB
+                channel.changeFaderLevelDB(3);
+            } else {
+                // Turn off: subtract 3dB
+                channel.changeFaderLevelDB(-3);
+            }
+            updateBoostButtonText();
+
+            if (window.ipcRenderer) {
+                window.ipcRenderer.send('show-boost-notification', {
+                    isActive: nowBoosted
+                });
+            }
+        };
+    </script>
+
     <script type="module">
         // Require the SoundcraftUI module
         import { SoundcraftUI } from './node_modules/soundcraft-ui-connection/index.mjs';
 
         // Create connection
-        const conn = new SoundcraftUI('192.168.1.200');
+        window.conn = new SoundcraftUI('192.168.1.200');
 
         // Subscribe to connection status updates
-        if (conn.status$) {
-            conn.status$.subscribe({
+        if (window.conn.status$) {
+            window.conn.status$.subscribe({
                 next: (status) => {
                     document.getElementById('connection-status').textContent = `Status: ${status}`;
                 },
@@ -78,7 +186,7 @@
         // Create connection
         (async () => {
             try {
-                await conn.connect();
+                await window.conn.connect();
                 console.log('Connected to Soundcraft UI');
                 // Update status immediately after connect (in case subscription doesn't catch initial state)
                 if (document.getElementById('connection-status')) {
@@ -89,68 +197,8 @@
                 document.getElementById('connection-status').textContent = 'Status: Connection Failed';
             }
         })();
-
-        // Toggle 3dB boost on channel 1
-        let is3dBBoostActive = false;
-        // Mute toggle state for channel 1
-        let isMuted = false;
-        window.toggle3dBBoost = function () {
-            if (!conn || !conn.master || !conn.master.input) {
-                console.error('Soundcraft UI connection not ready');
-                return;
-            }
-
-            const channel = conn.master.input(1);
-            if (!channel) {
-                console.error('Channel 1 not available');
-                return;
-            }
-
-            if (is3dBBoostActive) {
-                // Turn off: subtract 3dB
-                channel.changeFaderLevelDB(-3);
-                is3dBBoostActive = false;
-                document.getElementById('boost3dBButton').textContent = 'Boost 3dB: OFF';
-            } else {
-                // Turn on: add 3dB
-                channel.changeFaderLevelDB(3);
-                is3dBBoostActive = true;
-                document.getElementById('boost3dBButton').textContent = 'Boost 3dB: ON';
-            }
-
-            if (window.ipcRenderer) {
-                window.ipcRenderer.send('show-boost-notification', {
-                    isActive: is3dBBoostActive
-                });
-            }
-        };
-
-        // Toggle mute/unmute on channel 1
-        window.toggleMute = function (ch) {
-            if (!conn || !conn.master || !conn.master.input) {
-                console.error('Soundcraft UI connection not ready');
-                return;
-            }
-
-            const channel = conn.master.input(ch);
-            if (!channel) {
-                console.error(`Channel ${ch} not available`);
-                return;
-            }
-
-            if (isMuted) {
-                // Turn off mute (unmute)
-                channel.unmute();
-                isMuted = false;
-                document.getElementById('muteToggleButton').textContent = `Mute ${ch}`;
-            } else {
-                // Turn on mute
-                channel.mute();
-                isMuted = true;
-                document.getElementById('muteToggleButton').textContent = `Unmute ${ch}`;
-            }
-        };
     </script>
+
     <script>
         // Listen for IPC message from main process to toggle 3dB boost via global shortcut
         if (typeof require !== 'undefined' && require('electron')) {
